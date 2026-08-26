@@ -506,6 +506,237 @@ def api_whitelist():
     rows = conn.execute('SELECT phone_normalized, reason, added_at FROM whitelist ORDER BY added_at DESC LIMIT 500').fetchall()
     return jsonify([dict(r) for r in rows])
 
+# === Moderation / Admin Endpoints ===
+
+def require_moderator():
+    """Check if caller is a moderator. In MVP, bypass with header 'x-moderator-key'."""
+    key = request.headers.get('x-moderator-key', '')
+    valid_keys = os.environ.get('MODERATOR_KEYS', '').split(',')
+    valid_keys = [k.strip() for k in valid_keys if k.strip()]
+    if not valid_keys:
+        return True  # open moderation in beta
+    return key in valid_keys
+
+@app.route('/api/moderation/reports/pending')
+def api_moderation_pending():
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db()
+    rows = conn.execute('''SELECT * FROM reports WHERE status = 'pending'
+        ORDER BY risk_score DESC, created_at DESC LIMIT 100''').fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/moderation/report/<int:report_id>/approve', methods=['PATCH'])
+def api_moderation_approve(report_id):
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db()
+    conn.execute('''UPDATE reports SET status = 'approved', updated_at = datetime('now')
+                    WHERE id = ?''', (report_id,))
+    row = conn.execute('SELECT phone_normalized, scam_type, risk_score, message FROM reports WHERE id = ?', (report_id,)).fetchone()
+    if row:
+        # Add to blacklist if high risk (>=50)
+        if row['risk_score'] >= 50:
+            conn.execute('''INSERT OR IGNORE INTO blacklist (phone_normalized, reason, added_by)
+                            VALUES (?, 'Approved by moderator', 0)''', (row['phone_normalized'],))
+        # Ensure scam_type is set
+        if row['scam_type'] == 'unknown' and row['message']:
+            scam_type = classify_scam_type(row['message'])
+            if scam_type != 'unknown':
+                conn.execute('UPDATE reports SET scam_type = ? WHERE id = ?', (scam_type, report_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': 'Report approved'})
+
+@app.route('/api/moderation/report/<int:report_id>/reject', methods=['PATCH'])
+def api_moderation_reject(report_id):
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db()
+    conn.execute('''UPDATE reports SET status = 'rejected', updated_at = datetime('now')
+                    WHERE id = ?''', (report_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': 'Report rejected'})
+
+@app.route('/api/moderation/report/<int:report_id>/dismiss', methods=['PATCH'])
+def api_moderation_dismiss(report_id):
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db()
+    row = conn.execute('SELECT phone_normalized FROM reports WHERE id = ?', (report_id,)).fetchone()
+    if row:
+        conn.execute('''UPDATE reports SET status = 'fp', updated_at = datetime('now')
+                        WHERE id = ?''', (report_id,))
+        conn.execute('DELETE FROM blacklist WHERE phone_normalized = ?', (row['phone_normalized'],))
+        conn.execute('''INSERT OR IGNORE INTO whitelist (phone_normalized, reason, added_by)
+                        VALUES (?, 'False positive confirmed by moderator', 0)''', (row['phone_normalized'],))
+        conn.execute('''UPDATE scores SET whitelisted = 1, blacklisted = 0, current_score = -30
+                        WHERE phone_normalized = ?''', (row['phone_normalized'],))
+        conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': 'Report dismissed as false positive'})
+
+@app.route('/api/moderation/report/<int:report_id>/escalate', methods=['PATCH'])
+def api_moderation_escalate(report_id):
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db()
+    conn.execute('''UPDATE reports SET status = 'escalated', updated_at = datetime('now')
+                    WHERE id = ?''', (report_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': 'Report escalated for law enforcement'})
+
+@app.route('/api/admin/blacklist', methods=['POST'])
+def api_admin_blacklist_add():
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    phone = request.json.get('phone', '').strip() if request.json else ''
+    reason = request.json.get('reason', 'Manual addition') if request.json else 'Manual addition'
+    if not phone:
+        return jsonify({'error': 'Phone required'}), 400
+    phone_norm = normalize_number(phone)
+    conn = get_db()
+    conn.execute('''INSERT OR IGNORE INTO blacklist (phone_normalized, reason, added_by)
+                    VALUES (?, ?, 0)''', (phone_norm, reason))
+    conn.execute('''UPDATE scores SET blacklisted = 1, current_score = 60 WHERE phone_normalized = ?''', (phone_norm,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': f'Added {phone_norm} to blacklist'})
+
+@app.route('/api/admin/blacklist/<path:phone>')
+def api_admin_blacklist_remove(phone):
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    phone_norm = normalize_number(phone)
+    conn = get_db()
+    conn.execute('DELETE FROM blacklist WHERE phone_normalized = ?', (phone_norm,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': f'Removed {phone_norm} from blacklist'})
+
+@app.route('/api/admin/whitelist', methods=['POST'])
+def api_admin_whitelist_add():
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    phone = request.json.get('phone', '').strip() if request.json else ''
+    reason = request.json.get('reason', 'Manual addition') if request.json else 'Manual addition'
+    if not phone:
+        return jsonify({'error': 'Phone required'}), 400
+    phone_norm = normalize_number(phone)
+    conn = get_db()
+    conn.execute('''INSERT OR IGNORE INTO whitelist (phone_normalized, reason, added_by)
+                    VALUES (?, ?, 0)''', (phone_norm, reason))
+    conn.execute('''UPDATE scores SET whitelisted = 1, current_score = -30 WHERE phone_normalized = ?''', (phone_norm,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': f'Added {phone_norm} to whitelist'})
+
+@app.route('/api/admin/score/<phone>', methods=['PATCH'])
+def api_admin_score_override(phone):
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    phone_norm = normalize_number(phone)
+    new_score = request.json.get('score', 0) if request.json else 0
+    conn = get_db()
+    conn.execute('''INSERT OR IGNORE INTO scores (phone_normalized) VALUES (?)''', (phone_norm,))
+    conn.execute('''UPDATE scores SET
+        override_score = ?, current_score = ?, manual_override = 1,
+        last_updated = datetime('now')
+        WHERE phone_normalized = ?''', (new_score, new_score, phone_norm))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': f'Score for {phone_norm} set to {new_score}'})
+
+@app.route('/api/admin/reports/bulk', methods=['POST'])
+def api_admin_bulk_reports():
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    reports = request.json.get('reports', []) if request.json else []
+    conn = get_db()
+    count = 0
+    for r in reports:
+        phone = normalize_number(r.get('phone', ''))
+        if not phone:
+            continue
+        conn.execute('''INSERT INTO reports
+            (phone, phone_normalized, message, sender, scam_type, risk_score, status,
+             reporter_ip_hash, reporter_email, evidence_urls)
+            VALUES (?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?)''',
+            (r.get('phone', ''), phone, r.get('message', ''), r.get('sender', ''),
+             r.get('scam_type', classify_scam_type(r.get('message', ''))),
+             r.get('risk_score', 50), hashlib.sha256(b'admin').hexdigest()[:32],
+             r.get('email', ''), r.get('evidence', '')))
+        count += 1
+        # Update score cache
+        conn.execute('''INSERT OR IGNORE INTO scores (phone_normalized) VALUES (?)''', (phone,))
+        conn.execute('''UPDATE scores SET
+            current_score = ?, last_reported = datetime('now'),
+            total_reports = total_reports + 1, scam_reports = scam_reports + 1
+            WHERE phone_normalized = ?''', (r.get('risk_score', 50), phone))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': f'Imported {count} reports'})
+
+@app.route('/api/admin/dashboard')
+def api_admin_dashboard():
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db()
+    today = datetime.utcnow().strftime('%Y-%m-%d')
+    stats = conn.execute('''SELECT
+        (SELECT COUNT(*) FROM reports WHERE status = 'pending') as pending,
+        (SELECT COUNT(*) FROM reports WHERE status = 'approved') as approved,
+        (SELECT COUNT(*) FROM reports WHERE status = 'rejected') as rejected,
+        (SELECT COUNT(*) FROM reports WHERE status = 'fp') as false_positives,
+        (SELECT COUNT(*) FROM reports WHERE status = 'escalated') as escalated,
+        (SELECT COUNT(*) FROM reports WHERE date(created_at) = ?) as today_reports,
+        (SELECT COUNT(*) FROM blacklist) as blacklist_size,
+        (SELECT COUNT(*) FROM whitelist) as whitelist_size
+    ''', (today,)).fetchone()
+    scam_breakdown = conn.execute('''SELECT scam_type, COUNT(*) as cnt
+        FROM reports GROUP BY scam_type ORDER BY cnt DESC LIMIT 10''').fetchall()
+    conn.close()
+    return jsonify({
+        'summary': dict(stats),
+        'scam_breakdown': [dict(r) for r in scam_breakdown]
+    })
+
+@app.route('/api/admin/reports')
+def api_admin_reports():
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    status = request.args.get('status', '')
+    limit = int(request.args.get('limit', 100))
+    conn = get_db()
+    if status:
+        rows = conn.execute('''SELECT * FROM reports WHERE status = ?
+            ORDER BY created_at DESC LIMIT ?''', (status, limit)).fetchall()
+    else:
+        rows = conn.execute('''SELECT * FROM reports ORDER BY created_at DESC LIMIT ?''', (limit,)).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/score/decay', methods=['POST'])
+def api_admin_score_decay():
+    """Apply daily score decay to all non-whitelisted numbers."""
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = get_db()
+    # Decay: reduce score by 5, floor at -50, reset if was manual override
+    result = conn.execute('''UPDATE scores SET
+        current_score = CASE
+            WHEN manual_override = 1 THEN current_score
+            WHEN current_score > 20 THEN current_score - 5
+            ELSE current_score
+        END,
+        last_updated = datetime('now')
+        WHERE whitelisted = 0''')
+    conn.commit()
+    updated = result.rowcount
+    conn.close()
+    return jsonify({'success': True, 'message': f'Decayed scores for {updated} numbers'})
+
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({'error': 'Not found'}), 404
