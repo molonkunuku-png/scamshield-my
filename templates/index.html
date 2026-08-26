@@ -170,7 +170,8 @@
             <div class="tab active" onclick="switchTab('check',this)">Phone Check</div>
             <div class="tab" onclick="switchTab('scan',this)">Message Scan</div>
             <div class="tab" onclick="switchTab('report',this)">Report Scam</div>
-        </div>
+            <div class="tab" onclick="switchTab('url',this)">Scan URL</div>
+            </div>
 
         <div id="tab-check" class="tab-content active">
             <div class="input-group">
@@ -203,16 +204,31 @@
             <div class="error" id="report-error"></div>
         </div>
 
-        <div class="disclaimer">
-            ⚠️ Risk score ≠ proof. Numbers may be spoofed. Always verify independently.
-            Never rely solely on automated checks for financial decisions.
+        <div id="tab-url" class="tab-content">
+            <div class="input-group">
+                <input type="url" id="scan-url" placeholder="https://bit.ly/example" autocomplete="off">
+            </div>
+            <button class="secondary" onclick="scanUrl()">Scan URL</button>
+            <div id="url-result" class="result"></div>
+            <div class="error" id="url-error"></div>
         </div>
 
-        <footer>
-            Free API • No personal data stored permanently • Scores decay every 24h<br>
-            Based on behavioral signals, not prefix alone<br><br>
-            Live at <strong>https://scamshield-my-ggvr.onrender.com</strong>
-        </footer>
+    </div>
+
+    <div class="disclaimer">
+        ⚠️ Risk score ≠ proof. Numbers may be spoofed. Always verify independently.
+        Never rely solely on automated checks for financial decisions.
+    </div>
+
+    <footer>
+        <div style="margin-bottom: 8px;">
+            <a href="/api/docs" style="color: var(--electric); text-decoration: none;">API Documentation</a> •
+            <a href="https://github.com/molonkunuku-png/scamshield-my" style="color: var(--electric); text-decoration: none;" target="_blank">GitHub</a>
+        </div>
+        Free API • No personal data stored permanently • Scores decay every 24h<br>
+        Based on behavioral signals, not prefix alone<br><br>
+        Live at <strong>https://scamshield-my-ggvr.onrender.com</strong>
+    </footer>
     </div>
 
 <script>
@@ -412,6 +428,53 @@ async function submitReport() {
 document.getElementById('phone').addEventListener('keypress', e => {
     if (e.key === 'Enter') checkNumber();
 });
+
+async function scanUrl() {
+    const url = document.getElementById('scan-url').value.trim();
+    const resultDiv = document.getElementById('url-result');
+    const errorDiv = document.getElementById('url-error');
+    resultDiv.style.display = 'none';
+    errorDiv.textContent = '';
+
+    if (!url) {
+        errorDiv.textContent = 'Enter a URL first';
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/scan/url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+
+        const score = data.risk_score;
+        const color = getScoreColor(score);
+        const badgeClass = getBadgeClass(data.status);
+
+        let signalsHtml = '';
+        if (data.signals && data.signals.length > 0) {
+            signalsHtml = '<ul class="signals-list">' +
+                data.signals.map(s => `<li>• ${s}</li>`).join('') +
+                '</ul>';
+        }
+
+        resultDiv.innerHTML = `
+            <div style="margin-bottom: 12px;">
+                <span style="font-size: 1.2rem; font-weight: 700;">${data.url}</span>
+                <span class="status-badge ${badgeClass}">${data.status}</span>
+            </div>
+            <div class="detail-row"><span class="label">Domain</span><span class="value">${data.domain}</span></div>
+            <div class="detail-row"><span class="label">Risk Score</span><span class="value" style="color:${color}">${score}</span></div>
+            <div class="score-bar"><div class="score-fill" style="width:${Math.min(score/200*100,100)}%; background:${color};"></div></div>
+            ${signalsHtml}
+        `;
+        resultDiv.style.display = 'block';
+    } catch (err) {
+        errorDiv.textContent = 'Network error — try again';
+    }
+}
 </script>
 </body>
 </html>

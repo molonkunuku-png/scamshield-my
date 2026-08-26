@@ -769,6 +769,95 @@ def api_domains_check():
         })
     return jsonify({'domain': domain, 'known': False, 'risk_score': 0})
 
+def check_safe_browsing(urls):
+    """Check URLs against Google Safe Browsing API. Returns dict of url -> threat or None."""
+    api_key = os.environ.get('SAFE_BROWSING_KEY', '')
+    if not api_key:
+        return {u: None for u in urls}
+
+    import urllib.request, json as _json
+    endpoint = 'https://safebrowsing.googleapis.com/v4/threatMatches:find'
+    payload = {
+        'client': {'clientId': 'scamshield-my', 'clientVersion': '2.2'},
+        'threatInfo': {
+            'threatTypes': ['SOCIAL_ENGINEERING', 'MALWARE', 'UNWANTED_SOFTWARE'],
+            'platformTypes': ['ANY_PLATFORM'],
+            'threatEntryTypes': ['URL'],
+            'threatEntries': [{'url': u} for u in urls]
+        }
+    }
+    try:
+        req = urllib.request.Request(
+            endpoint + f'?key={api_key}',
+            data=_json.dumps(payload).encode(),
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = _json.loads(resp.read())
+        matches = {m['threats'][0]['url']: m for m in result.get('matches', [])}
+        return {u: matches.get(u) for u in urls}
+    except Exception as e:
+        return {u: {'error': str(e)} for u in urls}
+
+@app.route('/api/scan/url', methods=['POST'])
+def api_scan_url():
+    """Scan a single URL for threats."""
+    url = request.json.get('url', '').strip() if request.json else ''
+    if not url:
+        return jsonify({'error': 'URL required'}), 400
+
+    conn = get_db()
+    # Check local DB first
+    domain = re.match(r'https?://([^/]+)', url)
+    domain_name = domain.group(1) if domain else url
+
+    local = conn.execute('SELECT risk_score, source FROM domains WHERE domain = ?', (domain_name,)).fetchone()
+    sb_result = check_safe_browsing([url])
+
+    conn.close()
+    risk = 0
+    signals = []
+
+    if local:
+        risk += local['risk_score']
+        signals.append(f"Local DB: {local['source']} score {local['risk_score']}")
+
+    if sb_result.get(url):
+        risk += 80
+        signals.append("Google Safe Browsing: THREAT DETECTED")
+    else:
+        signals.append("Google Safe Browsing: clear (or not configured)")
+
+    status = get_status(min(risk, 200)) if risk > 0 else 'SAFE'
+    return jsonify({
+        'url': url,
+        'domain': domain_name,
+        'risk_score': min(risk, 200),
+        'status': status,
+        'signals': signals,
+        'safe_browsing': bool(sb_result.get(url)),
+    })
+
+@app.route('/api/admin/domains/import', methods=['POST'])
+def api_admin_domains_import():
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    domains = request.json.get('domains', []) if request.json else []
+    conn = get_db()
+    count = 0
+    for d in domains:
+        domain = d.get('domain', '').strip().lower()
+        score = d.get('risk_score', 50)
+        source = d.get('source', 'manual')
+        if domain:
+            conn.execute('''INSERT OR REPLACE INTO domains
+                (domain, risk_score, source, last_seen)
+                VALUES (?, ?, ?, datetime('now'))''', (domain, score, source))
+            count += 1
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'imported': count})
+
 @app.route('/api/admin/score/decay', methods=['POST'])
 def api_admin_score_decay():
     """Apply daily score decay to all non-whitelisted numbers."""
@@ -792,6 +881,83 @@ def api_admin_score_decay():
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({'error': 'Not found'}), 404
+
+# === Public API (unauthenticated, rate-limited) ===
+# Simple in-memory rate limiter
+from collections import defaultdict
+from threading import Lock
+import time
+
+_rate_limit_store = defaultdict(list)
+_rate_limit_lock = Lock()
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX = 10  # requests per window per IP
+
+def rate_limited():
+    """Check if current IP is rate-limited."""
+    ip = request.remote_addr or 'unknown'
+    key = hash_ip(ip)
+    now = time.time()
+    with _rate_limit_lock:
+        # Clean old entries
+        _rate_limit_store[key] = [t for t in _rate_limit_store[key] if now - t < RATE_LIMIT_WINDOW]
+        if len(_rate_limit_store[key]) >= RATE_LIMIT_MAX:
+            return True
+        _rate_limit_store[key].append(now)
+        return False
+
+def hash_ip(ip):
+    return hashlib.sha256(ip.encode()).hexdigest()[:16] if ip else 'unknown'
+
+@app.route('/api/v1/check')
+def api_v1_check():
+    """Public API v1: phone number risk check. Rate limited."""
+    if rate_limited():
+        return jsonify({'error': 'Rate limit exceeded. Max 10 requests/minute.'}), 429
+    phone = request.args.get('q', '').strip()
+    if not phone:
+        return jsonify({'error': 'Missing query parameter: q'}), 400
+    # Delegate to internal check
+    return api_check()
+
+@app.route('/api/v1/scan/message', methods=['POST'])
+def api_v1_scan_message():
+    """Public API v1: message scan. Rate limited."""
+    if rate_limited():
+        return jsonify({'error': 'Rate limit exceeded. Max 10 requests/minute.'}), 429
+    return api_scan_message()
+
+@app.route('/api/docs')
+def api_docs():
+    """OpenAPI-style docs."""
+    return jsonify({
+        'name': 'ScamShield MY API',
+        'version': '2.2',
+        'endpoints': [
+            {'method': 'GET', 'path': '/api/check', 'params': ['q (phone)', 'msg (optional)', 'sender (optional)']},
+            {'method': 'GET', 'path': '/api/health', 'params': []},
+            {'method': 'POST', 'path': '/api/report', 'params': ['phone', 'message', 'sender', 'email']},
+            {'method': 'POST', 'path': '/api/scan/message', 'json': ['message']},
+            {'method': 'POST', 'path': '/api/scan/url', 'json': ['url']},
+            {'method': 'GET', 'path': '/api/stats', 'params': []},
+            {'method': 'GET', 'path': '/api/trends', 'params': ['limit']},
+            {'method': 'GET', 'path': '/api/blacklist', 'params': []},
+            {'method': 'GET', 'path': '/api/whitelist', 'params': []},
+            {'method': 'GET', 'path': '/api/domains/check', 'params': ['q (domain)']},
+            {'method': 'GET', 'path': '/api/feeds', 'params': []},
+            {'method': 'GET', 'path': '/api/admin/dashboard', 'auth': True},
+            {'method': 'GET', 'path': '/api/admin/reports', 'auth': True},
+            {'method': 'GET', 'path': '/api/moderation/reports/pending', 'auth': True},
+            {'method': 'PATCH', 'path': '/api/moderation/report/<id>/approve', 'auth': True},
+            {'method': 'PATCH', 'path': '/api/moderation/report/<id>/reject', 'auth': True},
+            {'method': 'PATCH', 'path': '/api/moderation/report/<id>/dismiss', 'auth': True},
+            {'method': 'POST', 'path': '/api/admin/score/decay', 'auth': True},
+            {'method': 'POST', 'path': '/api/admin/feed/refresh', 'auth': True},
+            {'method': 'POST', 'path': '/api/admin/domains/import', 'auth': True},
+        ],
+        'rate_limit': '10 requests/minute (v1 endpoints)',
+        'moderator_auth': 'Set MODERATOR_KEYS env var; pass x-moderator-key header',
+    })
 
 @app.errorhandler(500)
 def server_error(e):
