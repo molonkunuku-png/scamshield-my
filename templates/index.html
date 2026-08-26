@@ -14,6 +14,7 @@
             --danger: #ff4757;
             --success: #2ed573;
             --warning: #ffa502;
+            --text-dim: #888;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -23,7 +24,7 @@
             min-height: 100vh;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
             padding: 20px;
         }
         .card {
@@ -31,33 +32,25 @@
             border: 1px solid var(--border);
             border-radius: 24px;
             padding: 48px;
-            max-width: 600px;
+            max-width: 720px;
             width: 100%;
             box-shadow: 0 32px 64px rgba(0,212,255,0.08);
+            margin-top: 20px;
         }
         h1 {
             text-align: center;
-            font-size: 2rem;
-            margin-bottom: 8px;
+            font-size: 2.2rem;
+            margin-bottom: 4px;
             background: linear-gradient(135deg, var(--electric), var(--gold));
             -webkit-background-clip: text;
-            -webkit-text-fill-opacity: 0;
+            -webkit-text-fill-color: transparent;
             background-clip: text;
-            text-fill-opacity: 0;
+            text-fill-color: transparent;
         }
-        .subtitle {
-            text-align: center;
-            color: #888;
-            font-size: 0.9rem;
-            margin-bottom: 32px;
-        }
-        .input-group {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
+        .subtitle { text-align: center; color: var(--text-dim); font-size: 0.95rem; margin-bottom: 32px; }
+        .input-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
         #phone {
-            flex: 1;
+            width: 100%;
             padding: 16px 20px;
             border: 1px solid var(--border);
             border-radius: 14px;
@@ -67,11 +60,25 @@
             outline: none;
             transition: border-color 0.2s;
         }
-        #phone:focus {
-            border-color: var(--electric);
+        #phone:focus { border-color: var(--electric); }
+        textarea#message {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: rgba(0,0,0,0.3);
+            color: #fff;
+            font-size: 1rem;
+            outline: none;
+            min-height: 80px;
+            resize: vertical;
+            font-family: inherit;
         }
+        textarea#message:focus { border-color: var(--electric); }
+        .btn-row { display: flex; gap: 12px; margin-top: 12px; }
         button {
-            padding: 16px 32px;
+            flex: 1;
+            padding: 16px;
             border: none;
             border-radius: 14px;
             background: linear-gradient(135deg, var(--electric), var(--gold));
@@ -83,17 +90,16 @@
         }
         button:hover { transform: translateY(-2px); }
         button:active { transform: translateY(0); }
-        .result {
-            margin-top: 24px;
-            padding: 20px;
-            border-radius: 14px;
+        button.secondary {
+            background: rgba(255,255,255,0.05);
+            color: var(--electric);
             border: 1px solid var(--border);
-            background: rgba(0,0,0,0.3);
-            display: none;
         }
+        button.secondary:hover { background: rgba(255,255,255,0.08); }
+        .result { margin-top: 24px; display: none; }
         .status-badge {
             display: inline-block;
-            padding: 4px 12px;
+            padding: 5px 16px;
             border-radius: 999px;
             font-size: 0.8rem;
             font-weight: 700;
@@ -101,54 +107,153 @@
             vertical-align: middle;
         }
         .danger-badge { background: rgba(255,71,87,0.2); color: var(--danger); border: 1px solid var(--danger); }
+        .warning-badge { background: rgba(255,165,2,0.2); color: var(--warning); border: 1px solid var(--warning); }
         .safe-badge { background: rgba(46,213,115,0.2); color: var(--success); border: 1px solid var(--success); }
-        .warn-badge { background: rgba(255,165,2,0.2); color: var(--warning); border: 1px solid var(--warning); }
-        .detail-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid var(--border);
-        }
+        .neutral-badge { background: rgba(255,255,255,0.08); color: #aaa; border: 1px solid var(--border); }
+        .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
         .detail-row:last-child { border-bottom: none; }
-        .label { color: #888; }
+        .label { color: var(--text-dim); }
         .value { font-weight: 700; }
-        .error {
-            color: var(--danger);
-            text-align: center;
-            font-weight: 700;
+        .score-bar {
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            margin: 12px 0;
+            overflow: hidden;
         }
-        footer {
+        .score-fill { height: 100%; transition: width 0.3s; }
+        .signals-list { list-style: none; margin-top: 12px; }
+        .signals-list li {
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+            color: #ccc;
+        }
+        .signals-list li:last-child { border-bottom: none; }
+        .error { color: var(--danger); text-align: center; font-weight: 700; margin: 12px 0; }
+        .tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+        .tab {
+            flex: 1;
+            padding: 12px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            border-radius: 12px;
             text-align: center;
-            margin-top: 32px;
-            color: #444;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab.active { background: var(--electric); color: var(--bg); font-weight: 700; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        footer {
+            text-align: center; margin-top: 36px; color: var(--text-dim); font-size: 0.8rem;
+            border-top: 1px solid var(--border); padding-top: 16px;
+        }
+        .disclaimer {
+            background: rgba(255,165,2,0.08);
+            border: 1px solid rgba(255,165,2,0.2);
+            border-radius: 12px;
+            padding: 12px 16px;
             font-size: 0.8rem;
+            margin-top: 16px;
+            color: #e0d0a0;
         }
     </style>
 </head>
 <body>
     <div class="card">
         <h1>SCAMSHIELD MY</h1>
-        <p class="subtitle">Malaysia Phone Scam Checker</p>
+        <p class="subtitle">Malaysia Phone &amp; Message Scam Risk Scanner</p>
 
-        <div class="input-group">
-            <input type="tel" id="phone" placeholder="e.g. 013-123 4567 or +601512345678" autocomplete="off">
-            <button onclick="checkNumber()">CHECK</button>
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('check',this)">Phone Check</div>
+            <div class="tab" onclick="switchTab('scan',this)">Message Scan</div>
+            <div class="tab" onclick="switchTab('report',this)">Report Scam</div>
         </div>
 
-        <div id="result" class="result"></div>
+        <div id="tab-check" class="tab-content active">
+            <div class="input-group">
+                <input type="tel" id="phone" placeholder="e.g. 013-123 4567 or +601512345678" autocomplete="off">
+                <textarea id="message" placeholder="Optional: paste the suspicious message text..." rows="3"></textarea>
+            </div>
+            <button onclick="checkNumber()">Check Risk</button>
+            <div id="result" class="result"></div>
+            <div class="error" id="error"></div>
+        </div>
 
-        <div class="error" id="error"></div>
+        <div id="tab-scan" class="tab-content">
+            <div class="input-group">
+                <textarea id="scan-message" placeholder="Paste full SMS/WhatsApp/Gmail message here..." rows="5"></textarea>
+            </div>
+            <button class="secondary" onclick="scanMessage()">Scan Message</button>
+            <div id="scan-result" class="result"></div>
+            <div class="error" id="scan-error"></div>
+        </div>
+
+        <div id="tab-report" class="tab-content">
+            <div class="input-group">
+                <input type="tel" id="report-phone" placeholder="Scam phone number">
+                <textarea id="report-message" placeholder="Full message text (helps verification)" rows="4"></textarea>
+                <input type="text" id="report-sender" placeholder="Sender ID (if known)">
+                <input type="email" id="report-email" placeholder="Your email (optional, for follow-up)">
+            </div>
+            <button onclick="submitReport()">Submit Report</button>
+            <div id="report-result" class="result"></div>
+            <div class="error" id="report-error"></div>
+        </div>
+
+        <div class="disclaimer">
+            ⚠️ Risk score ≠ proof. Numbers may be spoofed. Always verify independently.
+            Never rely solely on automated checks for financial decisions.
+        </div>
 
         <footer>
-            Free API • No personal data stored<br>
-            Use <strong>012</strong>/<strong>016</strong>/<strong>019</strong> = clean carriers<br>
-            Avoid <strong>011</strong>/<strong>013</strong>/<strong>014</strong>/<strong>015</strong>/<strong>017</strong>/<strong>018</strong> = scam ranges
+            Free API • No personal data stored permanently • Scores decay every 24h<br>
+            Based on behavioral signals, not prefix alone<br><br>
+            Live at <strong>https://scamshield-my-ggvr.onrender.com</strong>
         </footer>
     </div>
 
 <script>
+let currentTab = 'check';
+
+function switchTab(tab, el) {
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    el.classList.add('active');
+    currentTab = tab;
+}
+
+function getScoreColor(score) {
+    if (score >= 75) return '#ff4757';
+    if (score >= 50) return '#ffa502';
+    if (score >= 25) return '#ffda79';
+    if (score <= -20) return '#2ed573';
+    return '#888';
+}
+
+function getScoreBg(score) {
+    if (score >= 75) return 'rgba(255,71,87,0.2)';
+    if (score >= 50) return 'rgba(255,165,2,0.2)';
+    if (score >= 25) return 'rgba(255,218,121,0.2)';
+    if (score <= -20) return 'rgba(46,213,115,0.15)';
+    return 'rgba(255,255,255,0.05)';
+}
+
+function getBadgeClass(status) {
+    if (status.includes('DANGER')) return 'danger-badge';
+    if (status.includes('HIGH')) return 'danger-badge';
+    if (status.includes('SUSPICIOUS')) return 'warning-badge';
+    if (status.includes('SAFE')) return 'safe-badge';
+    if (status.includes('LIKELY_SAFE')) return 'safe-badge';
+    return 'neutral-badge';
+}
+
 async function checkNumber() {
     const phone = document.getElementById('phone').value.trim();
+    const message = document.getElementById('message').value.trim();
     const resultDiv = document.getElementById('result');
     const errorDiv = document.getElementById('error');
     resultDiv.style.display = 'none';
@@ -160,7 +265,9 @@ async function checkNumber() {
     }
 
     try {
-        const res = await fetch(`/api/check?q=${encodeURIComponent(phone)}`);
+        let url = `/api/check?q=${encodeURIComponent(phone)}`;
+        if (message) url += `&msg=${encodeURIComponent(message)}`;
+        const res = await fetch(url);
         const data = await res.json();
 
         if (data.error) {
@@ -168,46 +275,142 @@ async function checkNumber() {
             return;
         }
 
-        let statusClass = '';
-        let statusText = data.status || '';
-        if (statusText.includes('DANGER')) {
-            statusClass = 'danger-badge';
-        } else if (statusText.includes('CLEAN')) {
-            statusClass = 'safe-badge';
-        } else if (statusText.includes('INVALID')) {
-            statusClass = 'danger-badge';
-        } else {
-            statusClass = 'warn-badge';
+        const score = data.risk_score;
+        const color = getScoreColor(score);
+        const bg = getScoreBg(score);
+        const badgeClass = getBadgeClass(data.status);
+
+        let signalsHtml = '';
+        if (data.signals && data.signals.length > 0) {
+            signalsHtml = '<ul class="signals-list">' +
+                data.signals.slice(0, 6).map(s => `<li>• ${s}</li>`).join('') +
+                '</ul>';
         }
 
         resultDiv.innerHTML = `
             <div style="margin-bottom: 12px;">
                 <span style="font-size: 1.2rem; font-weight: 700;">${data.normalized || phone}</span>
-                <span class="status-badge ${statusClass}">${statusText}</span>
+                <span class="status-badge ${badgeClass}">${data.status}</span>
             </div>
-            <div class="detail-row">
-                <span class="label">Area Code</span>
-                <span class="value">${data.area_code || 'N/A'}</span>
-            </div>
-            <div class="detail-row">
-                <span class="label">Mobile Number</span>
-                <span class="value">${data.mobile_number || 'N/A'}</span>
-            </div>
-            <div class="detail-row">
-                <span class="label">Valid Format</span>
-                <span class="value">${data.valid ? '✅ Yes' : '❌ No'}</span>
-            </div>
+            <div class="detail-row"><span class="label">Risk Score</span><span class="value" style="color:${color}">${score} ${data.confidence}</span></div>
+            <div class="score-bar"><div class="score-fill" style="width:${Math.min(score/200*100, 100)}%; background:${color};"></div></div>
+            ${signalsHtml}
+            <div class="detail-row"><span class="label">Total Reports</span><span class="value">${data.total_reports || 0}</span></div>
+            <div class="detail-row"><span class="label">Blacklisted</span><span class="value">${data.blacklisted ? '✅ Yes' : '❌ No'}</span></div>
+            <div class="detail-row"><span class="label">Whitelisted</span><span class="value">${data.whitelisted ? '✅ Yes' : '❌ No'}</span></div>
+            ${data.scam_type ? '<div class="detail-row"><span class="label">Scam Type</span><span class="value">' + data.scam_type + '</span></div>' : ''}
         `;
         resultDiv.style.display = 'block';
     } catch (err) {
-        errorDiv.textContent = 'Network error';
+        errorDiv.textContent = 'Network error — try again';
     }
 }
 
-document.getElementById('phone').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        checkNumber();
+async function scanMessage() {
+    const message = document.getElementById('scan-message').value.trim();
+    const resultDiv = document.getElementById('scan-result');
+    const errorDiv = document.getElementById('scan-error');
+    resultDiv.style.display = 'none';
+    errorDiv.textContent = '';
+
+    if (!message) {
+        errorDiv.textContent = 'Paste a message to scan';
+        return;
     }
+
+    try {
+        const res = await fetch('/api/scan/message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message })
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            errorDiv.textContent = data.error;
+            return;
+        }
+
+        const score = data.risk_score;
+        const color = getScoreColor(score);
+        const badgeClass = getBadgeClass(data.status);
+
+        let domainsHtml = '';
+        if (data.domains && data.domains.length > 0) {
+            domainsHtml = '<hr style="border-color:var(--border);margin:12px 0"><div class="detail-row"><span class="label">Domains in message</span><span class="value">' + data.domains.length + '</span></div>' +
+                data.domains.map(d => `<div class="detail-row"><span class="label">${d.domain}</span><span class="value" style="color:${d.known ? color : '#888'}">${d.known ? '⚠️ Known' : 'Unknown'}</span></div>`).join('');
+        }
+
+        let signalsHtml = '';
+        if (data.signals && data.signals.length > 0) {
+            signalsHtml = '<ul class="signals-list">' +
+                data.signals.slice(0, 8).map(s => `<li>• ${s}</li>`).join('') +
+                '</ul>';
+        }
+
+        resultDiv.innerHTML = `
+            <div style="margin-bottom: 12px;">
+                <span style="font-size: 1.2rem; font-weight: 700;">Scanned Message</span>
+                <span class="status-badge ${badgeClass}">${data.status}</span>
+            </div>
+            <div class="detail-row"><span class="label">Risk Score</span><span class="value" style="color:${color}">${score} ${data.confidence}</span></div>
+            <div class="score-bar"><div class="score-fill" style="width:${Math.min(score/200*100, 100)}%; background:${color};"></div></div>
+            ${signalsHtml}
+            <div class="detail-row"><span class="label">Scam Type</span><span class="value">${data.scam_type || 'N/A'}</span></div>
+            <div class="detail-row"><span class="label">Sender</span><span class="value">${data.sender || 'Unknown'}</span></div>
+            ${domainsHtml}
+        `;
+        resultDiv.style.display = 'block';
+    } catch (err) {
+        errorDiv.textContent = 'Network error — try again';
+    }
+}
+
+async function submitReport() {
+    const phone = document.getElementById('report-phone').value.trim();
+    const message = document.getElementById('report-message').value.trim();
+    const sender = document.getElementById('report-sender').value.trim();
+    const email = document.getElementById('report-email').value.trim();
+    const resultDiv = document.getElementById('report-result');
+    const errorDiv = document.getElementById('report-error');
+    resultDiv.style.display = 'none';
+    errorDiv.textContent = '';
+
+    if (!phone) {
+        errorDiv.textContent = 'Phone number is required';
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `phone=${encodeURIComponent(phone)}&message=${encodeURIComponent(message)}&sender=${encodeURIComponent(sender)}&email=${encodeURIComponent(email)}`
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            resultDiv.innerHTML = `
+                <div style="margin-bottom: 12px;">
+                    <span style="font-size: 1.2rem; font-weight: 700;">✅ Report Submitted</span>
+                </div>
+                <div class="detail-row"><span class="label">Report ID</span><span class="value">${data.report_id}</span></div>
+                <div class="detail-row"><span class="label">Risk Score</span><span class="value" style="color:${getScoreColor(data.risk_score)}">${data.risk_score}</span></div>
+                <div class="detail-row"><span class="label">Status</span><span class="value">${data.status}</span></div>
+                <div class="detail-row"><span class="label">Scam Type</span><span class="value">${data.scam_type}</span></div>
+                <p style="color:var(--text-dim); margin-top:12px; font-size:0.85rem;">Thank you! Report is pending moderator review. You'll be notified if confirmed.</p>
+            `;
+        } else if (data.duplicate) {
+            resultDiv.innerHTML = `<div style="margin-bottom:12px;"><span style="font-size:1.2rem;font-weight:700;">⚠️ Already Reported</span></div><div class="detail-row"><span class="label">Phone</span><span class="value">${data.phone}</span></div><div class="detail-row"><span class="label">Status</span><span class="value">${data.status}</span></div>`;
+        }
+        resultDiv.style.display = 'block';
+    } catch (err) {
+        errorDiv.textContent = 'Network error — try again';
+    }
+}
+
+document.getElementById('phone').addEventListener('keypress', e => {
+    if (e.key === 'Enter') checkNumber();
 });
 </script>
 </body>
