@@ -717,6 +717,58 @@ def api_admin_reports():
         rows = conn.execute('''SELECT * FROM reports ORDER BY created_at DESC LIMIT ?''', (limit,)).fetchall()
     return jsonify([dict(r) for r in rows])
 
+# === Feed Import Endpoints ===
+
+@app.route('/api/feeds')
+def api_feeds():
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM feeds ORDER BY name').fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/admin/feed/refresh', methods=['POST'])
+def api_admin_feed_refresh():
+    if not require_moderator():
+        return jsonify({'error': 'Unauthorized'}), 401
+    feed_name = request.json.get('feed', 'all') if request.json else 'all'
+    conn = get_db()
+    feeds = conn.execute('SELECT * FROM feeds WHERE status = "active"').fetchall()
+    if feed_name != 'all':
+        feeds = [f for f in feeds if f['name'].lower() == feed_name.lower()]
+
+    results = []
+    for feed in feeds:
+        try:
+            # Placeholder: real implementation would fetch and parse the feed
+            # For MCMC: https://www.mcmc.gov.my/en/activities/spam-sms-numbers
+            conn.execute('UPDATE feeds SET last_refreshed = datetime("now") WHERE id = ?', (feed['id'],))
+            results.append({'feed': feed['name'], 'status': 'skipped', 'message': 'Feed refresh placeholder'})
+        except Exception as e:
+            results.append({'feed': feed['name'], 'status': 'error', 'error': str(e)})
+
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'results': results})
+
+@app.route('/api/domains/check')
+def api_domains_check():
+    """Check if a domain is known risky."""
+    domain = request.args.get('q', '').strip().lower()
+    if not domain:
+        return jsonify({'error': 'Missing q parameter'}), 400
+    conn = get_db()
+    row = conn.execute('SELECT * FROM domains WHERE domain = ?', (domain,)).fetchone()
+    conn.close()
+    if row:
+        return jsonify({
+            'domain': domain,
+            'known': True,
+            'risk_score': row['risk_score'],
+            'source': row['source'],
+            'first_seen': row['first_seen'],
+            'last_seen': row['last_seen'],
+        })
+    return jsonify({'domain': domain, 'known': False, 'risk_score': 0})
+
 @app.route('/api/admin/score/decay', methods=['POST'])
 def api_admin_score_decay():
     """Apply daily score decay to all non-whitelisted numbers."""
