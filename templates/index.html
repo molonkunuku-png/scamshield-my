@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScamShield MY</title>
+    <style>
+        :root {
+            --bg: #0f0f23;
+            --glass: rgba(255,255,255,0.03);
+            --border: rgba(255,255,255,0.06);
+            --electric: #00d4ff;
+            --gold: #ffd700;
+            --danger: #ff4757;
+            --success: #2ed573;
+            --warning: #ffa502;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg);
+            color: #eee;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .card {
+            background: var(--glass);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 48px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 32px 64px rgba(0,212,255,0.08);
+        }
+        h1 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--electric), var(--gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-opacity: 0;
+            background-clip: text;
+            text-fill-opacity: 0;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 32px;
+        }
+        .input-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        #phone {
+            flex: 1;
+            padding: 16px 20px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: rgba(0,0,0,0.3);
+            color: #fff;
+            font-size: 1.1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        #phone:focus {
+            border-color: var(--electric);
+        }
+        button {
+            padding: 16px 32px;
+            border: none;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--electric), var(--gold));
+            color: var(--bg);
+            font-weight: 700;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.2s;
+        }
+        button:hover { transform: translateY(-2px); }
+        button:active { transform: translateY(0); }
+        .result {
+            margin-top: 24px;
+            padding: 20px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: rgba(0,0,0,0.3);
+            display: none;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        .danger-badge { background: rgba(255,71,87,0.2); color: var(--danger); border: 1px solid var(--danger); }
+        .safe-badge { background: rgba(46,213,115,0.2); color: var(--success); border: 1px solid var(--success); }
+        .warn-badge { background: rgba(255,165,2,0.2); color: var(--warning); border: 1px solid var(--warning); }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .detail-row:last-child { border-bottom: none; }
+        .label { color: #888; }
+        .value { font-weight: 700; }
+        .error {
+            color: var(--danger);
+            text-align: center;
+            font-weight: 700;
+        }
+        footer {
+            text-align: center;
+            margin-top: 32px;
+            color: #444;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>SCAMSHIELD MY</h1>
+        <p class="subtitle">Malaysia Phone Scam Checker</p>
+
+        <div class="input-group">
+            <input type="tel" id="phone" placeholder="e.g. 013-123 4567 or +601512345678" autocomplete="off">
+            <button onclick="checkNumber()">CHECK</button>
+        </div>
+
+        <div id="result" class="result"></div>
+
+        <div class="error" id="error"></div>
+
+        <footer>
+            Free API • No personal data stored<br>
+            Use <strong>012</strong>/<strong>016</strong>/<strong>019</strong> = clean carriers<br>
+            Avoid <strong>011</strong>/<strong>013</strong>/<strong>014</strong>/<strong>015</strong>/<strong>017</strong>/<strong>018</strong> = scam ranges
+        </footer>
+    </div>
+
+<script>
+async function checkNumber() {
+    const phone = document.getElementById('phone').value.trim();
+    const resultDiv = document.getElementById('result');
+    const errorDiv = document.getElementById('error');
+    resultDiv.style.display = 'none';
+    errorDiv.textContent = '';
+
+    if (!phone) {
+        errorDiv.textContent = 'Enter a phone number first';
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/check?q=${encodeURIComponent(phone)}`);
+        const data = await res.json();
+
+        if (data.error) {
+            errorDiv.textContent = data.error;
+            return;
+        }
+
+        let statusClass = '';
+        let statusText = data.status || '';
+        if (statusText.includes('DANGER')) {
+            statusClass = 'danger-badge';
+        } else if (statusText.includes('CLEAN')) {
+            statusClass = 'safe-badge';
+        } else if (statusText.includes('INVALID')) {
+            statusClass = 'danger-badge';
+        } else {
+            statusClass = 'warn-badge';
+        }
+
+        resultDiv.innerHTML = `
+            <div style="margin-bottom: 12px;">
+                <span style="font-size: 1.2rem; font-weight: 700;">${data.normalized || phone}</span>
+                <span class="status-badge ${statusClass}">${statusText}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Area Code</span>
+                <span class="value">${data.area_code || 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Mobile Number</span>
+                <span class="value">${data.mobile_number || 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Valid Format</span>
+                <span class="value">${data.valid ? '✅ Yes' : '❌ No'}</span>
+            </div>
+        `;
+        resultDiv.style.display = 'block';
+    } catch (err) {
+        errorDiv.textContent = 'Network error';
+    }
+}
+
+document.getElementById('phone').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        checkNumber();
+    }
+});
+</script>
+</body>
+</html>
